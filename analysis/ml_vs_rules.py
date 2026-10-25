@@ -35,6 +35,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default="warehouse/fraud_analytics_mart.duckdb")
     ap.add_argument("--split-step", type=int, default=500)
+    ap.add_argument("--out", default=str(ROOT / "results" / "ml_vs_rules.md"))
     args = ap.parse_args()
 
     t0 = time.perf_counter()
@@ -54,9 +55,15 @@ def main() -> None:
                 cast(t.tx_type = 'TRANSFER' as integer) as is_transfer,
                 t.is_fraud,
                 t.is_flagged_by_incumbent,
-                e.tx_id is not null as is_rule_flagged
+                e.tx_id is not null as is_rule_flagged,
+                coalesce(e.is_production, false) as is_production_rule_flagged
             from gold.fct_transactions t
-            left join (select distinct tx_id from gold.rpt_control_exceptions) e on e.tx_id = t.tx_id
+            left join (
+                select x.tx_id, bool_or(c.lifecycle = 'production') as is_production
+                from gold.rpt_control_exceptions x
+                join ref.control_catalogue c on c.control_id = x.control_id
+                group by 1
+            ) e on e.tx_id = t.tx_id
             where t.tx_type in ('TRANSFER', 'CASH_OUT')
         """).df()
 
@@ -69,15 +76,16 @@ def main() -> None:
     model.fit(train[FEATURES], y_train)
     scores = model.predict_proba(test[FEATURES])[:, 1]
 
-    rules = test.is_rule_flagged.to_numpy(bool)
-    k = int(rules.sum())
+    production = test.is_production_rule_flagged.to_numpy(bool)
+    k = int(production.sum())
     top_k = np.zeros(len(test), bool)
     top_k[np.argsort(-scores)[:k]] = True
 
     rows = [
-        ("Rules (any dbt control)",) + precision_recall(rules, y_test),
+        ("Production rules (C01 + C02)",) + precision_recall(production, y_test),
+        ("All six controls",) + precision_recall(test.is_rule_flagged.to_numpy(bool), y_test),
         ("Incumbent (isFlaggedFraud)",) + precision_recall(test.is_flagged_by_incumbent.to_numpy(bool), y_test),
-        (f"Model, same alert budget (top {k:,})",) + precision_recall(top_k, y_test),
+        (f"Model, same alert budget as production rules (top {k:,})",) + precision_recall(top_k, y_test),
         ("Model, score >= 0.5",) + precision_recall(scores >= 0.5, y_test),
     ]
     ap_score = average_precision_score(y_test, scores)
@@ -94,8 +102,8 @@ def main() -> None:
         f"Run time {time.perf_counter() - t0:.0f}s.",
     ]
     text = "\n".join(lines)
-    out = ROOT / "results" / "ml_vs_rules.md"
-    out.parent.mkdir(exist_ok=True)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(f"# Model vs rules\n\n{text}\n", encoding="utf-8")
     print(text)
 

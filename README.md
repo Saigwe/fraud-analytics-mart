@@ -6,7 +6,7 @@
 
 **Author:** Stanley Igwe, Lead Data (Analytics) Engineer · [Portfolio](https://saigwe.github.io)
 **Stack:** Python · dbt Core (unit tests, contracts, snapshots, seeds) · DuckDB · scikit-learn · GitHub Actions
-**Status:** 🚧 In progress. The pipeline is built and passes CI on a PaySim-shaped fixture; the full PaySim run is next. See [Roadmap](#roadmap).
+**Status:** Core pipeline complete and run on full PaySim (6,362,620 rows). Next on the [Roadmap](#roadmap): Slim CI and the semantic layer.
 
 Project 14 of my portfolio plan. At a Big Four firm I built internal-audit analytics for tier-1 banks. This repo rebuilds that kind of control testing on public synthetic data; no employer or client data, code or logic is used.
 
@@ -18,7 +18,7 @@ Project 14 of my portfolio plan. At a Big Four firm I built internal-audit analy
 | **Problem** | Fraud and audit teams run rules nobody measures. They can't say which controls catch fraud, which only make noise, or whether a model would do better with the same review capacity. |
 | **What I built** | Six controls as dbt models, one exceptions table with severity and review status (and SCD2 history), a per-control precision and recall report, Benford's-law conformity, and a time-split model-vs-rules comparison. |
 | **Why it matters** | Review capacity goes to the controls that find fraud. Noisy rules are visible and can be retired, and any model has to beat the rules on the same alert budget before it replaces them. |
-| **Proof** | Answer-key tests on planted patterns, unit-tested control logic, and an enforced contract on the performance report. See [Numbers](#numbers). |
+| **Proof** | On 6.36M transactions, the two production controls catch **99.4% of fraud at 89.8% precision**. The simple threshold rule would raise 409k alerts at 0.7% precision. An answer key, unit tests and a contract back it up. See [Numbers](#numbers). |
 
 ## Architecture
 ```mermaid
@@ -45,7 +45,7 @@ flowchart LR
 | C05 | Duplicate payment | same sender, receiver, type and amount within 2 hours | medium |
 | C06 | Fan-in | 4+ different senders transferring to one account in a day | high |
 
-Thresholds are dbt vars, so a reviewer can change one and rebuild. The control catalogue (name, severity, owner) is a seed.
+Thresholds are dbt vars, so a reviewer can change one and rebuild. The control catalogue is a seed. It holds each control's name, severity and owner, plus a **lifecycle** (production / review / retired) set from the measured results below, with the reason recorded beside it.
 
 ## Data model (gold layer)
 | Model | Grain | Purpose |
@@ -71,18 +71,57 @@ Thresholds are dbt vars, so a reviewer can change one and rebuild. The control c
 - **Generic tests:** keys are unique and not null; control IDs exist in the catalogue; statuses come from an allowed list.
 
 ## Numbers
-**CI fixture** (20,105 PaySim-shaped rows): `dbt build` 39/39 passing. All 51 planted patterns are found.
+All figures are from real runs on a Windows laptop (DuckDB, dbt 1.11). Reproduce them with `make all`.
 
-| Control | Alerts | Precision | Recall |
+**Pipeline:** 6,362,620 transactions, 8,213 of them fraud. The load takes 8.3 s. `dbt build` passes 39/39 nodes in 9.7 s (about 30 s wall clock with dbt start-up). The snapshot holds 1.63M exception versions.
+
+**Each control, measured against PaySim's fraud label (all 30 days):**
+
+| Control | Lifecycle | Alerts | Fraud caught | Precision | Recall |
+|---|---|---|---|---|---|
+| C01 Full balance drain | production | 8,018 | 8,018 | 100% | 97.6% |
+| C02 Transfer → cash-out chain | production | 9,083 | 8,153 | 89.8% | 99.3% |
+| C03 Sender balance inconsistency | retired | 1,180,087 | 20 | 0.002% | 0.2% |
+| C04 Large transfer (> 200k) | review | 409,110 | 2,740 | 0.7% | 33.4% |
+| C05 Duplicate payment | review | 0 | 0 | n/a | 0% |
+| C06 Fan-in (4+ senders a day) | review | 22,226 | 21 | 0.09% | 0.3% |
+| **Production rules (C01 + C02)** | | **9,093** | **8,163** | **89.8%** | **99.4%** |
+| All six controls | | 1,410,098 | 8,175 | 0.6% | 99.5% |
+| Incumbent `isFlaggedFraud` | | 16 | 16 | 100% | 0.2% |
+
+**What the numbers say:**
+- **Two controls do almost all the work.** C01 and C02 find 99.4% of fraud with 9k alerts. All six together find only 12 more frauds, at the cost of 1.4M alerts.
+- **C03 is retired as a fraud control.** It flags 1.18M transactions for 20 frauds. It still matters as a ledger-integrity check, but it belongs in finance reconciliation, not the fraud queue.
+- **The incumbent rule is precise but blind.** It raises 16 alerts and misses 99.8% of fraud.
+- **C05 never fires on PaySim** because sender ids never repeat. That's a limit of the simulator, so the control is kept for real ledgers.
+
+**Model vs rules, on a later time window** (train on hours 1–500, test on 501+; TRANSFER and CASH_OUT; 124,630 test transactions, 2,652 of them fraud):
+
+| Method | Alerts | Precision | Recall |
 |---|---|---|---|
-| C01 drain | 80 | 100% | 100% |
-| C02 transfer → cash-out | 80 | 100% | 100% |
-| C03 balance inconsistency | 3,563 | 0% | 0% |
-| Incumbent `isFlaggedFraud` | 4 | 100% | 5% |
+| Production rules (C01 + C02) | 2,640 | 100.0% | 99.5% |
+| Gradient-boosted model, same alert budget | 2,640 | 99.9% | 99.4% |
+| Gradient-boosted model, score ≥ 0.5 | 2,646 | 99.9% | 99.7% |
+| All six controls | 72,390 | 3.6% | 99.6% |
+| Incumbent `isFlaggedFraud` | 10 | 100.0% | 0.4% |
 
-The fixture's fraud is planted to fit C01 and C02, so these rows show the plumbing works, not that the controls are good.
+The model's average precision is 0.998. **On PaySim, two explainable rules match a gradient-boosted model**, so the model isn't worth its operational cost here.
 
-**Full PaySim (6.36M rows):** _pending: the run happens once the file is downloaded (see How to run)._ This table will hold per-control precision and recall, Benford conformity by type, and model vs rules on the held-out window.
+There's a caveat, and it's an interview point. PaySim's fraud agent always drains the victim's account and cashes out at once, so this data separates fraud from non-fraud far more cleanly than real fraud would. The method carries over to real data; the near-perfect scores don't. ([results/ml_vs_rules.md](results/ml_vs_rules.md))
+
+**Benford's law** (mean absolute deviation, graded with Nigrini's thresholds):
+
+| Type | Transactions | MAD | Conformity |
+|---|---|---|---|
+| TRANSFER | 532,909 | 0.0054 | close conformity |
+| PAYMENT | 2,151,388 | 0.0095 | acceptable |
+| DEBIT | 41,430 | 0.0164 | nonconformity |
+| CASH_OUT | 2,237,481 | 0.0222 | nonconformity |
+| CASH_IN | 1,399,280 | 0.0228 | nonconformity |
+
+Cash-in and cash-out amounts don't follow Benford. That's expected for simulated amounts drawn from fixed distributions, so the conformity test is a screening tool here, not proof of manipulation.
+
+**CI fixture** (20,105 PaySim-shaped rows): `dbt build` passes 40/40, and all 51 planted patterns are found.
 
 ## How to run
 Requires **Python 3.12** (what CI uses) and `make`, or run the commands in the `Makefile` by hand.
@@ -100,7 +139,8 @@ Full data:
 - [x] PaySim loader, and a PaySim-shaped fixture with an answer key
 - [x] Six controls, exceptions queue with review status and SCD2 snapshot, per-control precision/recall, Benford conformity
 - [x] Unit tests, contract, answer-key and business-rule tests; time-split model vs rules
-- [ ] Full PaySim run; fill in [Numbers](#numbers) and tune the noisy controls
+- [x] Full PaySim run (6.36M rows); controls given a lifecycle from measured precision and recall
+- [ ] Retune C04 and C06 (thresholds, or combine with C01) and re-measure
 - [ ] Slim CI: build only modified models and their children (`state:modified+`) against a stored production manifest
 - [ ] Semantic layer for exception metrics (alerts, hit rate, time to review)
 - [ ] Snowflake or BigQuery run, with runtime and cost

@@ -34,6 +34,9 @@ models:
         data_type: varchar
         constraints: [{type: not_null}]
         data_tests: [unique]
+      - name: lifecycle
+        data_type: varchar
+        description: production / review / retired for a control; null for the rule-set rows.
       - name: alerts
         data_type: bigint
       - name: true_positives

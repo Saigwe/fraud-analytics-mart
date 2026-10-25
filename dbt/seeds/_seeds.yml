@@ -3,9 +3,18 @@ version: 2
 seeds:
   - name: control_catalogue
     description: The audit controls, their severity and owner.
+    config:
+      column_types: {control_id: varchar, control_name: varchar, severity: varchar, owner: varchar,
+                     lifecycle: varchar, lifecycle_reason: varchar}
     columns:
       - name: control_id
         data_tests: [unique, not_null]
+      - name: lifecycle
+        description: Set from measured precision and recall on full PaySim (see rpt_control_performance).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [production, review, retired]
   - name: exception_reviews
     description: Analyst decisions on exceptions. Empty in the repo; a case-management tool would write here.
     config:

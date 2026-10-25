@@ -1,7 +1,7 @@
-control_id,control_name,severity,owner
-C01,Full balance drain,high,fraud_ops
-C02,Transfer then cash-out chain,high,fraud_ops
-C03,Sender balance inconsistency,medium,finance_controls
-C04,Large transfer threshold,medium,fraud_ops
-C05,Duplicate payment,medium,finance_controls
-C06,Fan-in to one account,high,fraud_ops
+control_id,control_name,severity,owner,lifecycle,lifecycle_reason
+C01,Full balance drain,high,fraud_ops,production,Full PaySim: 100% precision and 97.6% recall
+C02,Transfer then cash-out chain,high,fraud_ops,production,Full PaySim: 89.8% precision and 99.3% recall
+C03,Sender balance inconsistency,medium,finance_controls,retired,1.18M alerts for 20 frauds: a ledger-integrity check for finance reconciliation and not a fraud signal
+C04,Large transfer threshold,medium,fraud_ops,review,0.7% precision: the threshold alone is too broad - retune or combine with C01
+C05,Duplicate payment,medium,finance_controls,review,Never fires on PaySim because sender ids are unique - kept for real ledgers
+C06,Fan-in to one account,high,fraud_ops,review,0.1% precision at 4+ senders a day - retune the threshold

@@ -1,4 +1,5 @@
--- True positives can't exceed alerts, precision and recall are proportions, and every control reports.
+-- True positives can't exceed alerts, precision and recall are proportions, and every catalogue control
+-- plus the three rule-set rows is reported.
 select control_id, 'invalid metrics' as problem
 from {{ ref('rpt_control_performance') }}
 where true_positives > alerts
@@ -7,9 +8,11 @@ where true_positives > alerts
 
 union all
 
-select c.control_id, 'control missing from performance report'
-from {{ ref('control_catalogue') }} c
-left join {{ ref('rpt_control_exceptions') }} e on e.control_id = c.control_id
+select c.control_id, 'missing from performance report'
+from (
+    select control_id from {{ ref('control_catalogue') }}
+    union all
+    select x from (values ('PRODUCTION_RULES'), ('ALL_RULES'), ('INCUMBENT')) v(x)
+) c
 left join {{ ref('rpt_control_performance') }} p on p.control_id = c.control_id
-where e.control_id is not null and p.control_id is null
-group by 1
+where p.control_id is null
