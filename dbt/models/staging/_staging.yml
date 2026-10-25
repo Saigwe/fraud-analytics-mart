@@ -1,0 +1,21 @@
+version: 2
+models:
+- name: stg_bronze__accounts
+  columns:
+  - name: account_id
+    data_tests:
+    - unique
+    - not_null
+- name: stg_bronze__transactions
+  columns:
+  - name: tx_id
+    data_tests:
+    - unique
+    - not_null
+  - name: account_id
+    data_tests:
+    - not_null
+    - relationships:
+        arguments:
+          to: ref('stg_bronze__accounts')
+          field: account_id
