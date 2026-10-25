@@ -1,19 +1,24 @@
 name: fraud_analytics_mart
-version: 0.1.0
+version: 0.2.0
 config-version: 2
 profile: fraud_analytics_mart
-model-paths:
-- models
-macro-paths:
-- macros
-test-paths:
-- tests
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
 target-path: target
-clean-targets:
-- target
-- dbt_packages
+clean-targets: ["target", "dbt_packages"]
+
 vars:
-  duplicate_window_minutes: 10
+  # PaySim steps are hours from the start of a 30-day simulation; map them onto a calendar.
+  simulation_start: "2025-01-01 00:00:00"
+  large_transfer_threshold: 200000   # the incumbent rule PaySim's isFlaggedFraud describes
+  duplicate_window_steps: 2
+  fan_in_min_senders: 4
+  is_fixture: false                  # true only for the CI fixture: enables answer-key tests
+
 models:
   fraud_analytics_mart:
     staging:
@@ -22,3 +27,7 @@ models:
     marts:
       +schema: gold
       +materialized: table
+
+seeds:
+  fraud_analytics_mart:
+    +schema: ref

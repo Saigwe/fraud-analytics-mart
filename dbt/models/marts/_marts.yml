@@ -1,14 +1,85 @@
 version: 2
+
 models:
-  - name: rpt_duplicate_payments
+  - name: fct_transactions
+    description: One row per transaction (grain tx_id) with balance-error and drain features.
     columns:
       - name: tx_id
         data_tests: [unique, not_null]
-  - name: rpt_benford_first_digit
+
+  - name: rpt_control_exceptions
+    description: One row per control hit, with severity and review status. The analysts' work queue.
     columns:
-      - name: digit
+      - name: exception_id
+        data_tests: [unique, not_null]
+      - name: control_id
         data_tests:
-          - unique
+          - relationships:
+              arguments:
+                to: ref('control_catalogue')
+                field: control_id
+      - name: status
+        data_tests:
           - accepted_values:
               arguments:
-                values: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+                values: [open, confirmed_fraud, false_positive, escalated]
+
+  - name: rpt_control_performance
+    description: Alerts, true positives, precision and recall per control against the isFraud label.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: control_id
+        data_type: varchar
+        constraints: [{type: not_null}]
+        data_tests: [unique]
+      - name: alerts
+        data_type: bigint
+      - name: true_positives
+        data_type: bigint
+      - name: precision
+        data_type: double
+      - name: recall
+        data_type: double
+
+  - name: rpt_benford_first_digit
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [tx_type, digit]
+
+  - name: rpt_benford_conformity
+    columns:
+      - name: tx_type
+        data_tests: [unique, not_null]
+
+unit_tests:
+  - name: chain_control_flags_both_legs_of_a_same_hour_same_amount_pair
+    model: ctl_c02_transfer_cashout_chain
+    given:
+      - input: ref('fct_transactions')
+        rows:
+          - {tx_id: 1, step: 10, tx_type: TRANSFER, amount: 5000.00}
+          - {tx_id: 2, step: 10, tx_type: CASH_OUT, amount: 5000.00}
+          - {tx_id: 3, step: 11, tx_type: CASH_OUT, amount: 5000.00}
+          - {tx_id: 4, step: 10, tx_type: CASH_OUT, amount: 4999.99}
+          - {tx_id: 5, step: 10, tx_type: PAYMENT, amount: 5000.00}
+    expect:
+      rows:
+        - {tx_id: 1, control_id: C02}
+        - {tx_id: 2, control_id: C02}
+
+  - name: balance_error_is_zero_for_consistent_rows_and_signed_by_direction
+    model: fct_transactions
+    given:
+      - input: ref('stg_paysim__transactions')
+        rows:
+          - {tx_id: 1, step: 1, tx_type: TRANSFER, amount: 100, orig_balance_before: 100, orig_balance_after: 0, dest_is_merchant: false, dest_balance_before: 0, dest_balance_after: 100}
+          - {tx_id: 2, step: 25, tx_type: CASH_IN, amount: 50, orig_balance_before: 10, orig_balance_after: 60, dest_is_merchant: false, dest_balance_before: 200, dest_balance_after: 150}
+          - {tx_id: 3, step: 2, tx_type: PAYMENT, amount: 30, orig_balance_before: 100, orig_balance_after: 100, dest_is_merchant: true, dest_balance_before: 0, dest_balance_after: 0}
+    expect:
+      rows:
+        - {tx_id: 1, day_index: 0, orig_balance_error: 0, dest_balance_error: 0, is_full_drain: true}
+        - {tx_id: 2, day_index: 1, orig_balance_error: 0, dest_balance_error: 0, is_full_drain: false}
+        - {tx_id: 3, day_index: 0, orig_balance_error: -30, dest_balance_error: null, is_full_drain: false}

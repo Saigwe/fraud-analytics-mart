@@ -1,7 +1,10 @@
 version: 2
+
 sources:
-- name: bronze
-  description: Raw tables, loaded by the fixture generator (CI) or the real-data loaders.
-  tables:
-  - name: accounts
-  - name: transactions
+  - name: bronze
+    description: Raw PaySim rows (ingestion/load_paysim.py), or the PaySim-shaped CI fixture.
+    tables:
+      - name: paysim_transactions
+        description: One row per simulated mobile-money transaction; tx_id is added by the loader.
+      - name: fixture_answer_key
+        description: Planted patterns in the CI fixture. Read only by fixture-only tests.

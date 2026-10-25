@@ -1,0 +1,7 @@
+control_id,control_name,severity,owner
+C01,Full balance drain,high,fraud_ops
+C02,Transfer then cash-out chain,high,fraud_ops
+C03,Sender balance inconsistency,medium,finance_controls
+C04,Large transfer threshold,medium,fraud_ops
+C05,Duplicate payment,medium,finance_controls
+C06,Fan-in to one account,high,fraud_ops

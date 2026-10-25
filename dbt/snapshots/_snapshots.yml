@@ -1,0 +1,9 @@
+snapshots:
+  - name: snap_exception_status
+    description: History of each exception's review status (SCD Type 2), for the audit trail.
+    relation: ref('rpt_control_exceptions')
+    config:
+      schema: snapshots
+      unique_key: exception_id
+      strategy: check
+      check_cols: [status, reviewed_by]
