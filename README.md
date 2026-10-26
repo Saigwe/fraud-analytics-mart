@@ -144,7 +144,7 @@ Full data:
 - [ ] Slim CI: build only modified models and their children (`state:modified+`) against a stored production manifest
 - [ ] Semantic layer for exception metrics (alerts, hit rate, time to review)
 - [ ] Snowflake or BigQuery run, with runtime and cost
-- [ ] Design doc and a 3-minute Loom walkthrough
+- [ ] Design doc and a 3-minute Loom walkthrough ([script ready](docs/walkthrough.md))
 
 ## Interview topics this project prepares
 - Rules vs ML for fraud, and judging both at the same alert budget
