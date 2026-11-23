@@ -3,7 +3,7 @@ DB ?= warehouse/fraud_analytics_mart.duckdb
 CSV ?= data/raw/paysim.csv
 DBT = cd dbt && DUCKDB_PATH=../$(DB) dbt
 
-.PHONY: all fixture-all bronze bronze-fixture dbt dbt-fixture ml ml-fixture clean
+.PHONY: all fixture-all bronze bronze-fixture dbt dbt-fixture ml ml-fixture clean charts
 
 all: bronze dbt ml                                  ## real PaySim (download it first, see README)
 fixture-all: bronze-fixture dbt-fixture ml-fixture  ## PaySim-shaped fixture, no download (CI)
@@ -28,3 +28,6 @@ ml-fixture:   # writes beside the fixture database, so results/ keeps the full-d
 
 clean:
 	rm -rf warehouse dbt/target dbt/logs
+
+charts:                                            ## README charts -> docs/charts
+	$(PY) charts/make_charts.py

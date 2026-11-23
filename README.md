@@ -20,6 +20,11 @@ Project 14 of my portfolio plan. At a Big Four firm I built internal-audit analy
 | **Why it matters** | Review capacity goes to the controls that find fraud. Noisy rules are visible and can be retired, and any model has to beat the rules on the same alert budget before it replaces them. |
 | **Proof** | On 6.36M transactions, the two production controls catch **99.4% of fraud at 89.8% precision**. The simple threshold rule would raise 409k alerts at 0.7% precision. An answer key, unit tests and a contract back it up. See [Numbers](#numbers). |
 
+## Charts
+Rendered from this repo's own results by `charts/make_charts.py` (`make charts`); CI re-renders them on every push.
+
+![Recall and alert volume for production rules, all controls, incumbent flag and the model](docs/charts/rules_vs_model.png)
+
 ## Architecture
 ```mermaid
 flowchart LR
